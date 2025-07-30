@@ -1,0 +1,43 @@
+import serial
+import time
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+scope = [
+    "https://spreadsheets.google.com/feeds",
+    "https://www.googleapis.com/auth/spreadsheets",
+    "https://www.googleapis.com/auth/drive.file",
+    "https://www.googleapis.com/auth/drive"
+]
+
+# Load API credentials (must be in same folder as this script)
+creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+client = gspread.authorize(creds)
+sheet = client.open("Attendance").sheet1
+
+ser = serial.Serial('COM7', 9600)
+time.sleep(2)
+
+print("Listening for data from Arduino...")
+
+while True:
+    if ser.in_waiting > 0:
+        line = ser.readline().decode('utf-8').strip()
+        if line:
+            try:
+                # Expecting format: Name,Roll,Class
+                name, roll, className = line.split(",")
+                now = datetime.now()
+                time_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+                # Check if late (after 8:00 AM)
+                cutoff_time = now.replace(hour=8, minute=0, second=0, microsecond=0)
+                status = "On Time" if now <= cutoff_time else "Late"
+
+                # Append to Google Sheet
+                sheet.append_row([name, roll, className, time_str, status])
+                print(f"Added: {name}, {roll}, {className}, {time_str}, {status}")
+
+            except ValueError:
+                print("Invalid data format from Arduino")
